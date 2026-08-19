@@ -1,11 +1,13 @@
 # Card Explorer
 
-**Deck & Rules** — rules and directions for 57 card and party games, in one
-page that works on a phone with no signal.
+**Deck & Rules** — rules and directions for 87 card and party games, in one
+page that works on a phone with no signal. Browse them, swipe through them,
+shortlist by who's at the table, and keep score for the ones that race to a
+target.
 
 The whole app is a single `index.html`: markup, styles, the game data, and
-about 250 lines of plain DOM code. No framework, no build step, no
-dependencies. Open the file and it runs.
+the logic. No framework, no build step, no dependencies. Open the file and it
+runs.
 
 ## Running it
 
@@ -50,9 +52,36 @@ Every game is one object in the `GAMES` array in `index.html`. The shape:
 | `blurb` | one or two sentences, shown on the card |
 | `sections` | `[{h, b}]` — the actual rules, rendered in order |
 | `variants` | optional list of house rules |
+| `score` | optional; opts the game into the score pad (see below) |
 
 To add a game, append an object and run the validator. Nothing else needs
 touching — categories, counts, and search pick it up automatically.
+
+### Scoring
+
+A game that races to a target gets a `score` block, which is all the score
+pad needs:
+
+```json
+"score": {
+  "to": 100,
+  "dir": "low",
+  "unit": "team",
+  "note": "Lowest total wins. Shoot the moon and everyone else takes 26."
+}
+```
+
+`to` is the target, `dir` is `low` when the smallest total wins (default
+`high`), `unit` is which way the setup screen opens — the pad lets you switch,
+which is what Five Hundred needs since it plays partnerships at 4 and 6 but
+singles at 3 and 5. `note` is one line shown above the pad.
+
+Eleven games have one. The validator cross-checks `to` against the number the
+rules text already states, so the two can't drift apart.
+
+**Contract Bridge is deliberately excluded.** Above/below the line,
+vulnerability and rubbers do not reduce to a running total, and a confidently
+wrong total is worse than no total at all.
 
 ## Checks
 
@@ -85,6 +114,21 @@ npm i -D playwright
 npx playwright install chromium
 npm run smoke
 ```
+
+## At the table
+
+Three things exist because this app gets held for two hours during a game,
+not read for thirty seconds:
+
+- **The score pad** keeps a game in progress in storage after every change, so
+  it survives a locked phone, a reload, or the tab being evicted. There's a
+  resume bar on every screen while a game is live.
+- **The screen stays awake** while a rules page or the pad is open, via the
+  Wake Lock API. It's dropped as soon as both close, and re-taken when the tab
+  comes back, since browsers release it on hide. Unsupported or refused is
+  silent — it's a nicety, not something to apologise for.
+- **Share** hands over the deep link for the open game (`#euchre`), via the
+  native share sheet where there is one and the clipboard otherwise.
 
 ## Icons
 

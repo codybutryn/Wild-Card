@@ -76,6 +76,35 @@ for (const g of GAMES) {
   }
 }
 
+/* --- score config -------------------------------------------------------
+   The pad drives off these, so a wrong target silently mis-scores a real
+   game. Cross-check it against the number the rules text already states. */
+const DIRS = ['low', 'high'], UNITS = ['player', 'team'];
+
+for (const g of GAMES) {
+  const sc = g.score;
+  if (!sc) continue;
+  const at = g.id;
+
+  if (!Number.isInteger(sc.to) || sc.to < 1)
+    err(`${at}: score.to must be a positive whole number, got ${sc.to}`);
+  if (sc.dir !== undefined && !DIRS.includes(sc.dir))
+    err(`${at}: score.dir must be one of ${DIRS.join('/')}, got "${sc.dir}"`);
+  if (sc.unit !== undefined && !UNITS.includes(sc.unit))
+    err(`${at}: score.unit must be one of ${UNITS.join('/')}, got "${sc.unit}"`);
+  if (sc.note !== undefined && (typeof sc.note !== 'string' || !sc.note.trim()))
+    err(`${at}: score.note is present but empty`);
+
+  // does the target match what the rules actually say?
+  const prose = g.sections.map(s => s.h + ' ' + s.b).join(' ');
+  const m = prose.match(/(?:first(?:\s+(?:team|player|partnership))?\s+to|reach(?:es)?|hits)\s+(\d{2,3})\b/i);
+  if (m && +m[1] !== sc.to)
+    err(`${at}: score.to is ${sc.to} but the rules say ${m[1]}`);
+
+  if (sc.unit === 'team' && g.players[1] < 2)
+    err(`${at}: scored by teams but seats fewer than 2`);
+}
+
 /* --- cross-references ---------------------------------------------------
    A rule that names a specific card must not name one the setup removed.  */
 const hearts = GAMES.find(g => g.id === 'hearts');

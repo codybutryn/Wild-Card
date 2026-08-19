@@ -239,6 +239,105 @@ check('Mafia and Werewolf are tagged roles-only', await page.evaluate(() => {
     && !g.some(x => x.tags.includes('no-deck-needed'));
 }));
 
+/* --- score pad ----------------------------------------------------------- */
+await page.goto(BASE, { waitUntil: 'networkidle' });
+await page.evaluate(() => localStorage.removeItem('dr:score'));
+await page.goto(BASE + '#hearts', { waitUntil: 'networkidle' }); await wait(150);
+check('games with scoring show a Score button',
+  await page.locator('#dScore:not(.hide)').count() === 1);
+await page.goto(BASE + '#go-fish', { waitUntil: 'networkidle' }); await wait(150);
+check('games without scoring hide it',
+  await page.locator('#dScore.hide').count() === 1);
+
+await page.goto(BASE + '#hearts', { waitUntil: 'networkidle' }); await wait(150);
+await page.click('#dScore'); await wait(150);
+check('score pad opens', await page.locator('#scorepad.open').count() === 1);
+check('target is prefilled from the rules',
+  await page.inputValue('#spTo') === '100', await page.inputValue('#spTo'));
+
+// step down to three and name them all, so nobody sits on an unscored 0 --
+// in a low-wins game an unscored player is legitimately in the lead
+await page.click('#spMinus'); await wait(80);
+await page.fill('#spName0', 'Cody');
+await page.fill('#spName1', 'Sam');
+await page.fill('#spName2', 'Pat');
+await page.click('#spStart'); await wait(150);
+check('pad starts with the entered names',
+  (await page.locator('.tot .who').allTextContents()).includes('Cody'));
+
+const addRound = async vals => {
+  for (let i = 0; i < vals.length; i++) await page.fill('#spIn' + i, String(vals[i]));
+  await page.click('#spAdd'); await wait(120);
+};
+await addRound([13, 13, 0]);
+await addRound([5, 20, 1]);
+const totalsNow = () => page.locator('.tot .num').allTextContents();
+check('totals accumulate across rounds',
+  (await totalsNow()).join(',') === '18,33,1', (await totalsNow()).join(','));
+check('history table lists both rounds',
+  await page.locator('.sphist tbody tr').count() === 2);
+
+check('leader is the LOW score in a low-wins game',
+  await page.evaluate(() => {
+    const lead = [...document.querySelectorAll('.tot.lead')].map(n => n.querySelector('.who').textContent);
+    return lead.length === 1 && lead[0] === 'Pat';   // 1 point, the lowest
+  }), (await page.locator('.tot.lead .who').allTextContents()).join(','));
+
+await page.click('#spUndo'); await wait(150);
+check('undo removes the last round',
+  await page.locator('.sphist tbody tr').count() === 1
+  && (await totalsNow())[0] === '13');
+
+// a shared best score should read as a tie, not a silent coin flip
+await addRound([0, 0, 13]);          // 13 / 13 / 13
+check('a tie for the lead highlights everyone tied',
+  await page.locator('.tot.lead').count() === 3,
+  (await page.locator('.tot.lead .who').allTextContents()).join(','));
+await page.click('#spUndo'); await wait(150);   // back to 13 / 13 / 0
+
+// survive a full reload mid-game (fresh load, no hash, so nothing overlays it)
+await page.goto(BASE, { waitUntil: 'networkidle' }); await wait(200);
+check('a game in progress shows a resume bar',
+  await page.locator('#resumeBar:not(.hide)').count() === 1,
+  (await page.textContent('#resumeBar')) || '');
+await page.click('#resumeBar'); await wait(200);
+check('resuming restores the rounds',
+  await page.locator('.sphist tbody tr').count() === 1);
+check('resuming restores the totals', (await totalsNow())[0] === '13');
+
+// winner detection: in a low-wins game the LOWEST total takes it
+await addRound([2, 200, 40]);
+await wait(150);
+check('crossing the target ends the game', await page.locator('.spwon').count() === 1);
+check('low-wins winner is the lowest total, not the crosser',
+  /Cody wins/.test(await page.textContent('.spwon')), await page.textContent('.spwon'));
+check('entry row is gone once won', await page.locator('#spAdd').count() === 0);
+
+await page.click('#spEnd'); await wait(150);
+check('End returns to setup', await page.locator('#spStart').count() === 1);
+await page.keyboard.press('Escape'); await wait(200);
+check('Escape closes the pad', await page.locator('#scorepad.open').count() === 0);
+
+// teams default for partnership games
+await page.goto(BASE + '#euchre', { waitUntil: 'networkidle' }); await wait(150);
+await page.click('#dScore'); await wait(150);
+check('partnership games open on Teams',
+  await page.getAttribute('#spUnit button[data-u="team"]', 'aria-pressed') === 'true');
+check('Euchre target is 10', await page.inputValue('#spTo') === '10');
+await page.keyboard.press('Escape'); await wait(200);
+
+/* --- share --------------------------------------------------------------- */
+await page.goto(BASE + '#hearts', { waitUntil: 'networkidle' }); await wait(150);
+check('share button is present', await page.locator('#dShare').count() === 1);
+await page.evaluate(() => {
+  window.__shared = null;
+  navigator.share = d => { window.__shared = d; return Promise.resolve(); };
+});
+await page.click('#dShare'); await wait(150);
+const shared = await page.evaluate(() => window.__shared);
+check('share hands over a deep link to this game',
+  !!shared && /#hearts$/.test(shared.url), shared ? shared.url : 'nothing shared');
+
 /* --- deep link + offline ------------------------------------------------ */
 await page.goto(BASE + '#euchre', { waitUntil: 'networkidle' }); await wait(140);
 check('deep link opens the right game', (await page.textContent('#dBody h2')) === 'Euchre');

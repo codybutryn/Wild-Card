@@ -6,7 +6,7 @@
 
    Bump CACHE when the shell list changes.                                  */
 
-const CACHE = 'deck-rules-v1';
+const CACHE = 'deck-rules-v2';
 const DOC = './index.html';
 const SHELL = [
   './',
