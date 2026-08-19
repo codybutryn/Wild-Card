@@ -4,7 +4,7 @@
   "description": "Rules and directions for every card game — plus party games you only need a deck to play.",
   "start_url": "./",
   "scope": "./",
-  "id": "/deck-and-rules",
+  "id": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0d1411",
