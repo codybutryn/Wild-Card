@@ -7,6 +7,9 @@
 <meta name="description" content="Rules and directions for every card game — plus party games you only need a deck to run.">
 <title>Deck &amp; Rules — every card game, one app</title>
 <link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%230d1411'/><text y='72' x='50' font-size='62' text-anchor='middle' fill='%23e8e3d5'>&#9824;</text></svg>">
 <style>
 :root{
@@ -28,6 +31,7 @@ body{
 button,input,select{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
 a{color:var(--felt)}
+:focus-visible{outline:2px solid var(--felt);outline-offset:2px}
 
 /* ---------- layout ---------- */
 .wrap{max-width:760px;margin:0 auto;padding:0 16px 120px}
@@ -66,8 +70,9 @@ header.top{
 
 /* ---------- game list ---------- */
 .list{display:grid;gap:10px}
+.gcard-wrap{position:relative}
 .gcard{
-  position:relative;display:block;width:100%;text-align:left;background:var(--card);
+  display:block;width:100%;text-align:left;background:var(--card);
   border:1px solid var(--line);border-radius:var(--radius);padding:14px 46px 14px 15px;transition:.12s;
 }
 .gcard:active{transform:scale(.994)}
@@ -370,7 +375,9 @@ function filtered(){
 
 /* ---- rendering ---- */
 function gameCard(g){
+  const wrap = el('div', 'gcard-wrap');
   const btn = el('button', 'gcard');
+  btn.type = 'button';
   btn.innerHTML = `
     <h3>${esc(g.name)}</h3>
     ${g.aka && g.aka.length ? `<p class="aka">also called ${g.aka.map(esc).join(' &middot; ')}</p>` : ''}
@@ -381,14 +388,18 @@ function gameCard(g){
       <span class="pill">${timeLabel(g)}</span>
       <span class="pill">${diffLabel(g)}</span>
     </div>`;
-  const fav = el('button', 'fav');
-  fav.innerHTML = state.favs.has(g.id) ? '&#9829;' : '&#9825;';
-  fav.setAttribute('aria-pressed', state.favs.has(g.id));
-  fav.setAttribute('aria-label', 'Save ' + g.name);
-  fav.onclick = e => { e.stopPropagation(); toggleFav(g.id); };
-  btn.appendChild(fav);
   btn.onclick = () => openGame(g.id);
-  return btn;
+
+  const on = state.favs.has(g.id);
+  const fav = el('button', 'fav');
+  fav.type = 'button';
+  fav.innerHTML = on ? '&#9829;' : '&#9825;';
+  fav.setAttribute('aria-pressed', on);
+  fav.setAttribute('aria-label', (on ? 'Remove ' : 'Save ') + g.name);
+  fav.onclick = () => toggleFav(g.id);
+
+  wrap.append(btn, fav);
+  return wrap;
 }
 
 function renderList(node, games, emptyMsg){
@@ -438,7 +449,10 @@ function toggleFav(id){
 }
 
 /* ---- detail view ---- */
-function openGame(id){
+let lastFocus = null;   // what to hand focus back to when the dialog closes
+let pushes = 0;         // history entries this app pushed, so Back stays true
+
+function openGame(id, fromPop){
   const g = GAMES.find(x => x.id === id);
   if(!g) return;
   const related = GAMES.filter(x => x.id !== g.id && x.cat === g.cat).slice(0, 4);
@@ -462,12 +476,14 @@ function openGame(id){
   `;
   if(related.length) renderList($('#relList'), related, '');
   const d = $('#detail');
+  if(!d.classList.contains('open')) lastFocus = document.activeElement;
   d.dataset.id = id;
   d.classList.add('open');
   d.scrollTop = 0;
   syncDetailFav(id);
   document.body.style.overflow = 'hidden';
-  if(location.hash !== '#' + id) history.pushState({ id }, '', '#' + id);
+  if(!fromPop && location.hash !== '#' + id){ history.pushState({ id }, '', '#' + id); pushes++; }
+  $('#dBack').focus();
 }
 
 function syncDetailFav(id){
@@ -477,10 +493,33 @@ function syncDetailFav(id){
   b.setAttribute('aria-pressed', on);
 }
 
+/* Closing is two jobs: tear the view down, and unwind the history entry we
+   pushed on the way in. dismissDetail() is the user-facing one — it goes
+   back, so the browser's own Back button stays in step. closeDetail() is the
+   teardown, called directly only when there is no entry to unwind. */
 function closeDetail(){
-  $('#detail').classList.remove('open');
+  const d = $('#detail');
+  if(!d.classList.contains('open')) return;
+  d.classList.remove('open');
+  d.removeAttribute('data-id');
   document.body.style.overflow = '';
-  if(location.hash) history.pushState({}, '', location.pathname + location.search);
+  if(lastFocus && document.contains(lastFocus)) lastFocus.focus();
+  lastFocus = null;
+}
+
+function dismissDetail(){
+  if(pushes > 0){ history.back(); return; }   // popstate does the teardown
+  if(location.hash) history.replaceState({}, '', location.pathname + location.search);
+  closeDetail();
+}
+
+function trapFocus(e, root){
+  const f = [...root.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(n => n.offsetParent !== null);
+  if(!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
 }
 
 /* ---- picker ---- */
@@ -560,7 +599,7 @@ $('#q').addEventListener('input', e => {
 });
 $('#clearQ').onclick = () => { $('#q').value = ''; state.q = ''; $('#searchWrap').classList.remove('has'); renderBrowse(); $('#q').focus(); };
 $('#resetFilters').onclick = () => { state.cat = null; state.q = ''; $('#q').value = ''; $('#searchWrap').classList.remove('has'); renderCats(); renderBrowse(); };
-$('#dBack').onclick = closeDetail;
+$('#dBack').onclick = dismissDetail;
 $('#pMinus').onclick = () => { state.pick.players = Math.max(1, state.pick.players - 1); savePick(); renderPickerControls(); };
 $('#pPlus').onclick  = () => { state.pick.players = Math.min(20, state.pick.players + 1); savePick(); renderPickerControls(); };
 $('#pickGo').onclick = runPicker;
@@ -572,12 +611,18 @@ $('#pickRandom').onclick = () => {
 $('#dFav').onclick = () => toggleFav($('#detail').dataset.id);
 document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 document.addEventListener('keydown', e => {
-  if(e.key === 'Escape' && $('#detail').classList.contains('open')) closeDetail();
+  const d = $('#detail');
+  if(d.classList.contains('open')){          // the dialog owns the keyboard
+    if(e.key === 'Escape') dismissDetail();
+    else if(e.key === 'Tab') trapFocus(e, d);
+    return;
+  }
   if(e.key === '/' && document.activeElement !== $('#q')){ e.preventDefault(); setTab('browse'); $('#q').focus(); }
 });
 window.addEventListener('popstate', () => {
+  if(pushes > 0) pushes--;
   const id = location.hash.slice(1);
-  if(id && GAMES.some(g => g.id === id)) openGame(id); else closeDetail();
+  if(id && GAMES.some(g => g.id === id)) openGame(id, true); else closeDetail();
 });
 
 /* ---- boot ---- */

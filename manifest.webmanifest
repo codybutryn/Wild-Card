@@ -1,0 +1,18 @@
+{
+  "name": "Deck & Rules",
+  "short_name": "Deck & Rules",
+  "description": "Rules and directions for every card game — plus party games you only need a deck to play.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "/deck-and-rules",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1411",
+  "theme_color": "#0d1411",
+  "categories": ["games", "entertainment", "reference"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
