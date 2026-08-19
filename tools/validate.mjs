@@ -76,6 +76,23 @@ for (const g of GAMES) {
   }
 }
 
+/* --- tableau + stock ----------------------------------------------------
+   A layout that deals N cards and calls the rest "the remaining M" has to
+   add up to the deck. TriPeaks shipped claiming 23 in the stock behind a
+   28-card tableau, which is 51 cards. Deliberately narrow: only single
+   52-card-deck games that state exactly one of each number, which is why it
+   has no false positives to suppress. */
+for (const g of GAMES) {
+  if (!/^1 standard 52-card deck/.test(g.needs)) continue;
+  const prose = g.sections.map(s => s.b).join(' ');
+  const deal = [...prose.matchAll(/\bDeal (\d+) cards\b/g)].map(m => +m[1]);
+  const rest = [...prose.matchAll(/\bremaining (\d+) cards\b/g)].map(m => +m[1]);
+  if (deal.length !== 1 || rest.length !== 1) continue;
+  if (deal[0] + rest[0] !== DECK)
+    err(`${g.id}: deals ${deal[0]} and calls ${rest[0]} the remainder, `
+      + `which is ${deal[0] + rest[0]} cards, not ${DECK}`);
+}
+
 /* --- score config -------------------------------------------------------
    The pad drives off these, so a wrong target silently mis-scores a real
    game. Cross-check it against the number the rules text already states. */
