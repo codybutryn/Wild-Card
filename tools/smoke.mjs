@@ -3,14 +3,29 @@
    Serves the repo with node's own http module and drives it in Chromium, so
    the only dev dependency is Playwright. The app itself stays dependency-free.
 
-     npm install          (once — installs Playwright)
-     npx playwright install chromium
-     node tools/smoke.mjs                                                   */
+     npm i -D playwright                (once)
+     npx playwright install chromium    (once)
+     npm run smoke
+
+   Playwright is deliberately NOT in package.json: static hosts run
+   `npm install` when they find one, and Playwright's postinstall drags down
+   a browser far bigger than a deploy will accept.                          */
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { chromium } from 'playwright';
+
+let chromium;
+try {
+  ({ chromium } = await import('playwright'));
+} catch {
+  console.error(
+    'These tests drive a real browser and need Playwright, which is not installed.\n\n'
+    + '  npm i -D playwright\n'
+    + '  npx playwright install chromium\n\n'
+    + 'The app itself needs nothing. `npm run validate` checks the data with no install.\n');
+  process.exit(1);
+}
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 8099;

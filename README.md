@@ -27,7 +27,8 @@ icons/                   generated PNGs (do not hand-edit)
 tools/validate.mjs       data checks — run before every commit
 tools/smoke.mjs          browser tests, serves the repo itself
 tools/make-icons.mjs     regenerates icons/
-package.json             scripts; Playwright is the only dev dependency
+package.json             scripts only — no dependencies, see Checks
+.nojekyll                tells GitHub Pages to serve files as-is
 ```
 
 ## The game data
@@ -74,11 +75,13 @@ scrutiny as changes to code.
 
 `smoke` starts a server on its own and drives the app in Chromium — search,
 favourites, dialog focus, the Back button, the picker, deep links, offline
-registration. It needs Playwright, the repo's only dev dependency; the app
-itself ships with none.
+registration. It needs Playwright, which is deliberately **not** listed in
+`package.json`: static hosts run `npm install` when they find one, and
+Playwright's postinstall pulls down a browser far larger than a deploy will
+accept. Install it yourself when you want to run the tests:
 
 ```sh
-npm install
+npm i -D playwright
 npx playwright install chromium
 npm run smoke
 ```
@@ -97,9 +100,20 @@ installed.
 
 ## Deploying
 
-Static hosting, no build. Point GitHub Pages, Netlify, or Cloudflare Pages at
-the repo root. Service workers need https (or localhost) to register, which
-every one of those provides.
+Static hosting, **no build step**. That last part matters: this repo has a
+`package.json` for its scripts, and hosts tend to see one and assume a Node
+build. Tell them not to.
+
+**Cloudflare Pages** — Framework preset `None`, build command **empty**,
+build output directory `/`.
+
+**GitHub Pages** — Settings → Pages → Source: *Deploy from a branch*, branch
+`main`, folder `/ (root)`. No build runs at all, which makes this the least
+surprising option.
+
+**Netlify** — build command empty, publish directory `.`.
+
+Service workers need https (or localhost) to register; all three provide it.
 
 After deploying an update, bump `CACHE` in `sw.js` so returning visitors get
 the new document rather than the cached one.
