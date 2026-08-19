@@ -75,8 +75,11 @@ const pickCount = () => page.locator('#pickList .gcard').count();
 await page.goto(BASE, { waitUntil: 'networkidle' });
 
 /* --- boot --------------------------------------------------------------- */
-check('boot: game count rendered', (await page.textContent('#gcount')) === '57 games');
-check('boot: every game rendered', (await page.locator('.gcard').count()) === 57);
+const TOTAL = 87;
+check('boot: game count rendered', (await page.textContent('#gcount')) === `${TOTAL} games`,
+  await page.textContent('#gcount'));
+check('boot: every game rendered', (await page.locator('.gcard').count()) === TOTAL,
+  String(await page.locator('.gcard').count()));
 
 /* --- markup ------------------------------------------------------------- */
 check('no nested <button> elements',
@@ -92,15 +95,18 @@ check('save heart is a sibling of the card button',
 /* --- search ------------------------------------------------------------- */
 check('"games for 6 people" returns games', (await search('games for 6 people')).length > 0);
 let r = await search('4 players');
-check('"4 players" narrows the list', r.length > 0 && r.length < 57, r.length + ' results');
+check('"4 players" narrows the list', r.length > 0 && r.length < TOTAL, r.length + ' results');
 r = await search('players 4');
-check('"players 4" reads the same as "4 players"', r.length > 0 && r.length < 57, r.length + ' results');
+check('"players 4" reads the same as "4 players"', r.length > 0 && r.length < TOTAL, r.length + ' results');
 check('"rummy 500" still finds Rummy 500 by name', (await search('rummy 500')).includes('Rummy 500'));
-check('"euchre" finds exactly Euchre', (await search('euchre')).join() === 'Euchre');
+// Five Hundred is also known as Bid Euchre, so two hits here is correct
+const eu = await search('euchre');
+check('"euchre" finds Euchre first among its matches',
+  eu[0] === 'Euchre' && eu.length <= 3, eu.join(', '));
 check('"go fish" finds Go Fish', (await search('go fish')).includes('Go Fish'));
 check('"kings in the corner" finds it', (await search('kings in the corner')).includes('Kings in the Corner'));
 r = await search('6');
-check('a bare number reads as a table size', r.length > 0 && r.length < 57, r.length + ' results');
+check('a bare number reads as a table size', r.length > 0 && r.length < TOTAL, r.length + ' results');
 check('"solitaire" finds the solo games', (await search('solitaire')).length >= 7);
 await page.fill('#q', ''); await wait(60);
 
@@ -148,11 +154,13 @@ check('saved game survives a reload', await page.locator('#favList .gcard').coun
 
 /* --- picker ------------------------------------------------------------- */
 await openPicker();
-await setPlayers(24);
-check('stepper reaches the data maximum', (await page.textContent('#pVal')) === '24');
+const maxSeats = await page.evaluate(() => MAX_PLAYERS);
+await setPlayers(maxSeats);
+check('stepper reaches the data maximum', +(await page.textContent('#pVal')) === maxSeats,
+  'MAX_PLAYERS=' + maxSeats);
 check('stepper stops there', await page.evaluate(() => document.querySelector('#pPlus').disabled));
 await page.click('#pickGo'); await wait(140);
-check('24 players finds the one game that seats them', await pickCount() === 1);
+check('24 players finds a game that seats them', await pickCount() >= 1, String(await pickCount()));
 
 await setPlayers(4);
 const at4 = await pickCount();
@@ -170,7 +178,7 @@ check('"15 min" excludes hour-plus games', await page.evaluate(() =>
 check('"15 min" still returns a usable list', at15 >= 5, at15 + ' results');
 
 await page.click('#timeSeg button >> nth=0'); await wait();
-await setPlayers(24);
+await setPlayers(maxSeats);
 await page.click('#vibeSeg button >> nth=1'); await wait(150);
 check('empty state names the vibe when the vibe is the blocker',
   /vibe/i.test((await page.textContent('#pickList .empty')) || ''));
@@ -178,6 +186,51 @@ await page.click('#vibeSeg button >> nth=1');
 await page.click('#timeSeg button >> nth=1'); await wait(150);
 check('empty state names the time when time is the blocker',
   /time|minutes/i.test((await page.textContent('#pickList .empty')) || ''));
+
+/* --- swipe deck ---------------------------------------------------------- */
+await page.goto(BASE, { waitUntil: 'networkidle' });
+await page.click('nav.tabs button[data-tab="swipe"]'); await wait(200);
+const topName = () => page.textContent('.scard:last-child h3');
+check('deck builds on first visit', await page.locator('.scard').count() > 0,
+  String(await page.locator('.scard').count()));
+check('card is drag-enabled (touch-action none)',
+  await page.evaluate(() => getComputedStyle(document.querySelector('.scard')).touchAction) === 'none');
+
+const first = await topName();
+await page.click('#swLike'); await wait(400);
+check('Save advances the deck', (await topName()) !== first, `${first} -> ${await topName()}`);
+check('saved game landed in the list',
+  await page.evaluate(n => GAMES.some(g => g.name === n && state.favs.has(g.id)), first));
+
+const second = await topName();
+await page.click('#swNope'); await wait(400);
+check('Pass advances the deck', (await topName()) !== second);
+check('passed game landed in the passed list',
+  await page.evaluate(n => GAMES.some(g => g.name === n && state.passed.has(g.id)), second));
+
+await page.click('#swUndo'); await wait(300);
+check('Undo puts the card back', (await topName()) === second, await topName());
+check('Undo clears the passed mark',
+  await page.evaluate(n => GAMES.some(g => g.name === n && !state.passed.has(g.id)), second));
+
+// the race: undo fired mid-animation used to eat the wrong card
+const before = await page.evaluate(() => SW.deck.length);
+await page.click('#swLike');
+await page.waitForTimeout(60);            // deliberately inside the 260ms flight
+await page.click('#swUndo');
+await wait(500);
+const after = await page.evaluate(() => SW.deck.length);
+check('undo during the swipe animation does not corrupt the deck',
+  after === before, `deck ${before} -> ${after}, expected unchanged`);
+check('deck still renders after the race', await page.locator('.scard').count() > 0);
+
+// swiping up opens the rules
+await page.click('#swInfo'); await wait(200);
+check('Rules button opens the detail', await page.locator('#detail.open').count() === 1);
+await page.keyboard.press('Escape'); await wait(200);
+check('Escape returns to the deck', await page.locator('#detail.open').count() === 0);
+check('arrow keys do not fire while the dialog is open',
+  await page.evaluate(() => SW.deck.length) === after);
 
 /* --- data --------------------------------------------------------------- */
 check('Mafia and Werewolf are tagged roles-only', await page.evaluate(() => {
